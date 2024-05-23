@@ -26,9 +26,9 @@ class SymbolDagWalker(DagWalker):
 
     def get_symbols(self,formula):
         self.walk(formula)
-        to_ret_arr = deepcopy(self.symbols_formula)
-        self.symbols_formula = set()
-        return to_ret_arr
+        #to_ret_arr = deepcopy(self.symbols_formula)
+        #self.symbols_formula = set()
+        return self.symbols_formula
     
     def walk_symbol(self, formula, args, **kwargs):
         symbol = self.mgr.Symbol(formula.symbol_name(),
@@ -53,39 +53,12 @@ class SymbolDagWalker(DagWalker):
 
     def walk_and(self, formula, args, **kwargs):
         
-        #
-        threshhold = random()
-        
-        if threshhold > 0.6 and not self.flag_changed:
-            self.change_id= formula.node_type()
-            self.flag_changed = True
-            
-            if(len(args) > 2):
-                ind = randint(0,len(args)-2)
-                split  = args[:ind] + args[ind + 1:]
-                return self.mgr.And(split)
-            
-            return args[0] if random() > 0.5 else args[1]
+    
         
         return self.mgr.And(args)
 
     def walk_or(self, formula, args, **kwargs):
-        threshhold = random()
-        #print(len(args))
-        #if or has more than two inputs, we need to select which one to randomly transfrom
-        if threshhold > 0.6 and not self.flag_changed:
-            
-            
-            self.change_id= formula.node_type()
-            self.flag_changed = True
-            
-            if(len(args) > 2):
-                ind = randint(0,len(args)-2)
-                split  = args[:ind] + args[ind + 2:]
-                split.append(Implies(Not(args[ind]),args[ind+1]))
-                return Or( split)
-            
-            return  Implies(Not(args[0]),args[1]) #args[0] if random() > 0.5 else args[1]
+        
         return self.mgr.Or(args)
 
     def walk_not(self, formula, args, **kwargs):
@@ -98,18 +71,7 @@ class SymbolDagWalker(DagWalker):
         return self.mgr.Implies(args[0], args[1])
 
     def walk_equals(self, formula, args, **kwargs):
-        threshhold = random()
         
-        if threshhold > 0.6 and not self.flag_changed:
-            threshhold2 = random()
-            self.change_id= formula.node_type()
-            self.flag_changed = True
-            if threshhold2 > 0.5:
-                return self.mgr.LE(args[0], args[1])
-            else:
-                return self.mgr.LE( args[1], args[0]) 
-            
-    
         return self.mgr.Equals(args[0], args[1])
 
     def walk_ite(self, formula, args, **kwargs):
@@ -121,16 +83,7 @@ class SymbolDagWalker(DagWalker):
 
     def walk_lt(self, formula, args, **kwargs):
         #return self.mgr.GT(args[0], args[1])
-        threshhold = random()
         
-        if threshhold > 0.6 and not self.flag_changed:
-            threshhold2 = random()
-            self.change_id= formula.node_type()
-            self.flag_changed = True
-            if threshhold2 > 0.5:
-                return self.mgr.LE(args[1], args[0])
-            else:
-                return Not(self.mgr.Equals( args[0], args[1]) )
         return self.mgr.LE(args[0], args[1])
 
     def walk_forall(self, formula, args, **kwargs):
@@ -144,35 +97,11 @@ class SymbolDagWalker(DagWalker):
         return self.mgr.Exists(qvars, args[0])
 
     def walk_plus(self, formula, args, **kwargs):
-        threshhold = random()
-        
-        if threshhold > 0.6 and not self.flag_changed:
-            threshhold2 = random()
-            self.change_id= formula.node_type()
-            self.flag_changed = True
-            a = randint(1,10)
-            if threshhold2 < 0.33:
-                return self.mgr.Plus(self.mgr.Plus(args[0],a), self.mgr.Plus(args[1],a))
-            elif threshhold2 < 0.66:
-                return self.mgr.Plus(self.mgr.Plus(args[0],a),args[1])
-            return self.mgr.Plus(args[0],self.mgr.Plus(args[1],a))
-            
         
         return self.mgr.Plus(args)
 
     def walk_times(self, formula, args, **kwargs):
-        threshhold = random()
-        
-        if threshhold > 0.6 and not self.flag_changed:
-            threshhold2 = random()
-            self.change_id= formula.node_type()
-            self.flag_changed = True
-            a = randint(1,10)
-            if threshhold2 < 0.33:
-                return self.mgr.Times(self.mgr.Times(args[0],a), self.mgr.Times(args[1],a))
-            elif threshhold2 < 0.66:
-                return self.mgr.Times(self.mgr.Times(args[0],a),args[1])
-            return self.mgr.Times(args[0],self.mgr.Times(args[1],a))
+       
         return self.mgr.Times(args)
 
     def walk_pow(self, formula, args, **kwargs):
@@ -180,18 +109,6 @@ class SymbolDagWalker(DagWalker):
         return self.mgr.Pow(args[0], args[1])
 
     def walk_minus(self, formula, args, **kwargs):
-        threshhold = random()
-        
-        if threshhold > 0.6 and not self.flag_changed:
-            threshhold2 = random()
-            self.change_id= formula.node_type()
-            self.flag_changed = True
-            a = randint(1,10)
-            if threshhold2 < 0.33:
-                return self.mgr.Minus(self.mgr.Minus(args[0],a), self.mgr.Minus(args[1],a))
-            elif threshhold2 < 0.66:
-                return self.mgr.Minus(self.mgr.Minus(args[0],a),args[1])
-            return self.mgr.Minus(args[0],self.mgr.Minus(args[1],a))
         
         return self.mgr.Minus(args[0], args[1])
 
@@ -220,12 +137,7 @@ class SymbolDagWalker(DagWalker):
         return self.mgr.BVOr(args[0], args[1])
 
     def walk_bv_xor(self, formula, args, **kwargs):
-        threshhold = random()
         
-        if threshhold > 0.6 and not self.flag_changed:
-            self.change_id= formula.node_type()
-            self.flag_changed = True
-            return  self.mgr.BVor(args[0],args[1]) #args[0] if random() > 0.5 else args[1]
         
         return self.mgr.BVXor(args[0], args[1])
 
@@ -343,16 +255,5 @@ class SymbolDagWalker(DagWalker):
                               assign)
 
     def walk_div(self, formula, args, **kwargs):
-        threshhold = random()
-        
-        if threshhold > 0.6 and not self.flag_changed:
-            threshhold2 = random()
-            self.change_id= formula.node_type()
-            self.flag_changed = True
-            a = randint(1,10)
-            if threshhold2 < 0.33:
-                return self.mgr.Div(self.mgr.Div(args[0],a), self.mgr.Div(args[1],a))
-            elif threshhold2 < 0.66:
-                return self.mgr.Div(self.mgr.Div(args[0],a),args[1])
-            return self.mgr.Div(args[0],self.mgr.Div(args[1],a))
+
         return self.mgr.Div(args[0], args[1])

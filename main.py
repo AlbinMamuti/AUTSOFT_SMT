@@ -100,6 +100,9 @@ z, u = Symbol("z",typename=REAL), Symbol("u",typename=REAL)
 
 formula = Or(And((a),Not(b)), And(Not(a),b))
 res = is_sat(formula)
+buf_out = StringIO()
+t = formula.to_smtlib(daggify=True)
+print(buf_out.getvalue())
 print()
 print(formula)
 walked = formula

@@ -10,7 +10,7 @@ from pysmt.walkers import TreeWalker, IdentityDagWalker
 from pysmt.rewritings import CNFizer
 from pysmt.shortcuts import *
 from equiv_walker import RandomEquivDagWalker
-
+from pysmt.exceptions import SolverReturnedUnknownResultError
 import tqdm
 import datetime
 
@@ -31,7 +31,7 @@ import pysmt
 
 CPUs = multiprocessing.cpu_count()
 
-def iterate_equivalence(formula,walker,symbols,is_sat):
+def iterate_equivalence(formula,walker,symbols,logic,solver):
     data_point = []
     # formula, change, is_sat_ret
     
@@ -43,16 +43,19 @@ def iterate_equivalence(formula,walker,symbols,is_sat):
         walked = walker.change_once(walked,symbols,old_walked)
         if old_walked == walked:
             break
-        ret = is_sat()
-        data_point.append([walked,walker.change_id,ret,"equiv"])
+        start = time.time()
+        ret = is_sat(walked,solver_name=solver)
+        end = time.time()
+        data_point.append([walked,walker.change_id,ret,"equiv",logic,solver,end - start])
+    return data_point
 
-def iterate_strength_weaken(formula,s_walker,w_walker,symbols,is_sat):
+def iterate_strength_weaken(formula,s_walker,w_walker,symbols,logic,solver):
     data_point = []
     # formula, change, is_sat_ret
     walkers = [w_walker,s_walker]
     walkers_descr = ["weaken","strengthen"]
     walked = formula
-    for i in range(100):
+    for i in range(10):
         coin_flip = randint(0,1)
         walker = walkers[coin_flip]
         
@@ -62,16 +65,23 @@ def iterate_strength_weaken(formula,s_walker,w_walker,symbols,is_sat):
         
         if old_walked == walked:
             break
-        ret = is_sat()
-        data_point.append([walked,walker.change_id,ret,walkers_descr[coin_flip]])
+        start = time.time()
+        try:
+            ret = is_sat(walked,solver_name=solver)
+        except SolverReturnedUnknownResultError as e:
+            end = time.time()
+            ret = "unkown"
+        end = time.time()
+        data_point.append([walked,walker.change_id,ret,walkers_descr[coin_flip],logic,solver,end - start])
+    return data_point
 
-def iterate_strength_weaken_equiv(formula,s_walker,w_walker,e_walker,symbols,is_sat):
+def iterate_strength_weaken_equiv(formula,s_walker,w_walker,e_walker,symbols,logic,solver):
     data_point = []
-    # formula, change, is_sat_ret
+    # formula, change, is_sat_ret, walker, logic
     walkers = [w_walker,s_walker,e_walker]
     walkers_descr = ["weaken","strengthen","equiv"]
     walked = formula
-    for i in range(100):
+    for i in range(10):
         coin_flip = randint(0,2)
         walker = walkers[coin_flip]
         
@@ -81,8 +91,19 @@ def iterate_strength_weaken_equiv(formula,s_walker,w_walker,e_walker,symbols,is_
         
         if old_walked == walked:
             break
-        ret = is_sat()
-        data_point.append([walked,walker.change_id,ret,walkers_descr[coin_flip]])
+        start = time.time()
+        ret = is_sat(walked,solver_name=solver)
+        end = time.time()
+        data_point.append([formula_to_smtlib_string(walked),walker.change_id,ret,walkers_descr[coin_flip],logic,solver,end - start])
+    return data_point
+
+def formula_from_smtlib_string(str):
+    script = parser.get_script(StringIO(str))
+    return script.get_last_formula()
+
+
+def formula_to_smtlib_string(formula):
+    return formula.to_smtlib(daggify=True)
 
 def analyze_block(formula):
     
@@ -92,15 +113,29 @@ def analyze_block(formula):
     strength_walker = RandomStrengthenerDagWalker(env=None,invalidate_memoization=True)
     equiv_walker = RandomEquivDagWalker(env=None,invalidate_memoization=True)
     
-    start = time.time()
+    dataZ3 = []
+    dataCVC4 = []
     
-    
+    form = formula[0]
+    form = equiv_walker.walk(form)
     try:
-        
-        
-        return
-    except:
-        return time.time() - start
+        symbols = symbol_walker.get_symbols(form)
+        solver_name="z3"
+        dataZ3.append( [*[iterate_equivalence(form,equiv_walker,symbols,formula[2],solver_name)],formula[1]])
+        dataZ3.append( [*[iterate_strength_weaken(form,strength_walker,prop_walker,symbols,formula[2],solver_name)],formula[1]])
+        dataZ3.append( [*[iterate_strength_weaken_equiv(form,strength_walker,prop_walker,equiv_walker, symbols,formula[2],solver_name)],formula[1]])
+
+        solver_name="cvc4"
+        dataCVC4.append( [*[iterate_equivalence(form,equiv_walker,symbols,formula[2],solver_name)],formula[1]])
+        dataCVC4.append( [*[iterate_strength_weaken(form,strength_walker,prop_walker,symbols,formula[2],solver_name)],formula[1]])
+        dataCVC4.append( [*[iterate_strength_weaken_equiv(form,strength_walker,prop_walker,equiv_walker, symbols,formula[2],solver_name)],formula[1]])
+
+        return 1
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        print(e)
+        return 0
     
         # except Exception as e:
         #     print(colors.FAIL+str(traceback.format_exc())+colors.END)
@@ -118,7 +153,7 @@ def init_process():
     return
 
 def parse():
-    
+    global parser
     data = []
     parser = SmtLibParser()
     #data is of the form [formula, sat/unsat]
@@ -143,7 +178,7 @@ def parse():
                         try:
                             script = parser.get_script(f)
                             formula = script.get_last_formula()
-                            data.append([formula,sat_unsat])
+                            data.append([formula,sat_unsat,logic])
                         except:
                             pass
                 else:
@@ -159,6 +194,7 @@ def main():
     print("Running analysis of SMT Solver for Z3 and CVC4")
     print("Initializing workers...")
     execution_times=[]
+    analyze_block(data[0])
     with multiprocessing.Pool(processes=CPUs, initializer=init_process, initargs=()) as pool:
         start_total = time.time()
         
