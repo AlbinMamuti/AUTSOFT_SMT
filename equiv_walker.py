@@ -37,12 +37,8 @@ class RandomEquivDagWalker(DagWalker):
         
 
     def walk_symbol(self, formula, args, **kwargs):
-        
-        threshhold = random()
         symbol = self.mgr.Symbol(formula.symbol_name(),
                                formula.symbol_type())
-           
-        
         return symbol
 
     def walk_algebraic_constant(self, formula, args, **kwargs):
@@ -65,7 +61,7 @@ class RandomEquivDagWalker(DagWalker):
         #
         threshhold = random()
         
-        if threshhold > 0.0 and not self.flag_changed:
+        if threshhold > 0.6 and not self.flag_changed:
             
             ind = randint(0,len(args)-2)
             split  = [*args[:ind], (args[ind+1]), (args[ind]),  *args[ind + 2:]]
@@ -73,7 +69,7 @@ class RandomEquivDagWalker(DagWalker):
             #split  = args[:ind] + args[ind+1] + args[ind] + args[ind + 2:]
             
             threshhold2 = random()
-            if threshhold2 >= 0.0:
+            if threshhold2 >= 0.5:
                 
                 self.change_id= formula.node_type()
                 self.flag_changed = True    

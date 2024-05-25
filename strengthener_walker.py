@@ -2,6 +2,7 @@ from pysmt.shortcuts import Or, Symbol, Solver, And, Implies, Not, REAL, BOOL
 from random import choice, randint, random
 from pysmt.walkers.dag import DagWalker
 
+
 class RandomStrengthenerDagWalker(DagWalker):
     """This class traverses a formula and rebuilds it recursively
     identically.

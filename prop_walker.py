@@ -1,7 +1,10 @@
 from pysmt.shortcuts import Or, Symbol, Solver, And, Implies, Not, REAL, BOOL
 from random import choice, randint, random
 from pysmt.walkers.dag import DagWalker
+import string
 
+def gen(N=6):
+    return ''.join(choice(string.ascii_uppercase + string.digits) for _ in range(N))
 
 class RandomWeakenerDagWalker(DagWalker):
     """This class traverses a formula and rebuilds it recursively
@@ -12,7 +15,7 @@ class RandomWeakenerDagWalker(DagWalker):
     """
     
     
-
+    
 
     def __init__(self, env=None, invalidate_memoization=None):
         DagWalker.__init__(self,
@@ -22,6 +25,9 @@ class RandomWeakenerDagWalker(DagWalker):
         self.flag_changed = False
         self.change_id = -1
         self.symbols = set()
+
+    def id_generator(self,size=6, chars=string.ascii_uppercase + string.digits):
+        return ''.join(random.choice(chars) for _ in range(size))
 
     def change_once(self,formula,symbols,old_formula):
         self.symbols = symbols
@@ -90,7 +96,7 @@ class RandomWeakenerDagWalker(DagWalker):
         threshhold = random()
         #print(len(args))
         #if or has more than two inputs, we need to select which one to randomly transfrom
-        if threshhold > 0.0 and not self.flag_changed:
+        if threshhold > 0.6 and not self.flag_changed:
             
             
             self.change_id= 3
@@ -188,7 +194,8 @@ class RandomWeakenerDagWalker(DagWalker):
             self.change_id= 7
             self.flag_changed = True
             #a = randint(1,10)
-            a = self.mgr.Symbol("a",list(self.symbols)[0].symbol_type())
+            t = gen()
+            a = self.mgr.Symbol(gen(),list(self.symbols)[0].symbol_type())
             if threshhold2 < 0.33:
                 return self.mgr.Plus(self.mgr.Plus(args[0],a), self.mgr.Plus(args[1],a))
             elif threshhold2 < 0.66:
@@ -206,7 +213,7 @@ class RandomWeakenerDagWalker(DagWalker):
             self.change_id= 7
             self.flag_changed = True
             test = list(self.symbols)[0]
-            a = self.mgr.Symbol("a",list(self.symbols)[0].symbol_type())
+            a = self.mgr.Symbol(gen(),list(self.symbols)[0].symbol_type())
             if threshhold2 < 0.33:
                 return self.mgr.Times(self.mgr.Times(args[0],a), self.mgr.Times(args[1],a))
             elif threshhold2 < 0.66:
@@ -225,7 +232,7 @@ class RandomWeakenerDagWalker(DagWalker):
             threshhold2 = random()
             self.change_id= 7
             self.flag_changed = True
-            a = self.mgr.Symbol("a",list(self.symbols)[0].symbol_type())
+            a = self.mgr.Symbol(gen(),list(self.symbols)[0].symbol_type())
             if threshhold2 < 0.33:
                 return self.mgr.Minus(self.mgr.Minus(args[0],a), self.mgr.Minus(args[1],a))
             elif threshhold2 < 0.66:
@@ -381,7 +388,7 @@ class RandomWeakenerDagWalker(DagWalker):
             threshhold2 = random()
             self.change_id= 7
             self.flag_changed = True
-            a = self.mgr.Symbol("a",list(self.symbols)[0].symbol_type())
+            a = self.mgr.Symbol(gen(),list(self.symbols)[0].symbol_type())
             if threshhold2 < 0.33:
                 return self.mgr.Div(self.mgr.Div(args[0],a), self.mgr.Div(args[1],a))
             elif threshhold2 < 0.66:

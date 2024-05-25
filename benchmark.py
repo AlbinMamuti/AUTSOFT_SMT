@@ -5,18 +5,21 @@ from io import StringIO
 import json
 from random import randint, random
 
+import pymongo
 from pysmt.smtlib.parser import SmtLibParser
 from pysmt.walkers import TreeWalker, IdentityDagWalker
 from pysmt.rewritings import CNFizer
 from pysmt.shortcuts import *
 from equiv_walker import RandomEquivDagWalker
-from pysmt.exceptions import SolverReturnedUnknownResultError
+from pysmt.exceptions import SolverReturnedUnknownResultError, NoLogicAvailableError
 import tqdm
 import datetime
 
 from prop_walker import RandomWeakenerDagWalker
 from strengthener_walker import RandomStrengthenerDagWalker
 from symbol_walker import SymbolDagWalker
+
+
 
 import os
 import re
@@ -44,9 +47,13 @@ def iterate_equivalence(formula,walker,symbols,logic,solver):
         if old_walked == walked:
             break
         start = time.time()
-        ret = is_sat(walked,solver_name=solver)
+        try:
+            ret = is_sat(walked,solver_name=solver)
+        except SolverReturnedUnknownResultError as e:
+            end = time.time()
+            ret = "unkown"
         end = time.time()
-        data_point.append([walked,walker.change_id,ret,"equiv",logic,solver,end - start])
+        data_point.append([formula_to_smtlib_string(walked),walker.change_id,ret,"equiv",logic,solver,end - start])
     return data_point
 
 def iterate_strength_weaken(formula,s_walker,w_walker,symbols,logic,solver):
@@ -72,7 +79,7 @@ def iterate_strength_weaken(formula,s_walker,w_walker,symbols,logic,solver):
             end = time.time()
             ret = "unkown"
         end = time.time()
-        data_point.append([walked,walker.change_id,ret,walkers_descr[coin_flip],logic,solver,end - start])
+        data_point.append([formula_to_smtlib_string(walked),walker.change_id,ret,walkers_descr[coin_flip],logic,solver,end - start])
     return data_point
 
 def iterate_strength_weaken_equiv(formula,s_walker,w_walker,e_walker,symbols,logic,solver):
@@ -92,7 +99,11 @@ def iterate_strength_weaken_equiv(formula,s_walker,w_walker,e_walker,symbols,log
         if old_walked == walked:
             break
         start = time.time()
-        ret = is_sat(walked,solver_name=solver)
+        try:
+            ret = is_sat(walked,solver_name=solver)
+        except SolverReturnedUnknownResultError as e:
+            end = time.time()
+            ret = "unkown"
         end = time.time()
         data_point.append([formula_to_smtlib_string(walked),walker.change_id,ret,walkers_descr[coin_flip],logic,solver,end - start])
     return data_point
@@ -103,7 +114,8 @@ def formula_from_smtlib_string(str):
 
 
 def formula_to_smtlib_string(formula):
-    return formula.to_smtlib(daggify=True)
+    ret_str = formula.to_smtlib(daggify=True)
+    return ret_str
 
 def analyze_block(formula):
     
@@ -118,19 +130,30 @@ def analyze_block(formula):
     
     form = formula[0]
     form = equiv_walker.walk(form)
+    start = time.time()
     try:
         symbols = symbol_walker.get_symbols(form)
         solver_name="z3"
         dataZ3.append( [*[iterate_equivalence(form,equiv_walker,symbols,formula[2],solver_name)],formula[1]])
         dataZ3.append( [*[iterate_strength_weaken(form,strength_walker,prop_walker,symbols,formula[2],solver_name)],formula[1]])
         dataZ3.append( [*[iterate_strength_weaken_equiv(form,strength_walker,prop_walker,equiv_walker, symbols,formula[2],solver_name)],formula[1]])
-
-        solver_name="cvc4"
+        end = time.time()
+        """ solver_name="cvc4"
         dataCVC4.append( [*[iterate_equivalence(form,equiv_walker,symbols,formula[2],solver_name)],formula[1]])
         dataCVC4.append( [*[iterate_strength_weaken(form,strength_walker,prop_walker,symbols,formula[2],solver_name)],formula[1]])
-        dataCVC4.append( [*[iterate_strength_weaken_equiv(form,strength_walker,prop_walker,equiv_walker, symbols,formula[2],solver_name)],formula[1]])
-
-        return 1
+        dataCVC4.append( [*[iterate_strength_weaken_equiv(form,strength_walker,prop_walker,equiv_walker, symbols,formula[2],solver_name)],formula[1]]) """
+        #print(".")
+        collection = mongo_connection["AUTSOFT"]["Z3"]
+        findings = {"formula":formula_to_smtlib_string(form),"data":dataZ3 ,"execution_time": end-start}
+        try:
+            collection.insert_one(findings)
+        except pymongo.errors.DuplicateKeyError:
+            pass
+        return dataZ3
+    
+    except NoLogicAvailableError as e:
+        return 0
+    
     except Exception as e:
         import traceback
         print(traceback.format_exc())
@@ -148,8 +171,11 @@ def analyze_block(formula):
     end = time.time()
     return end - start
 
-def init_process():
-    
+def init_process(t):
+    global mongo_connection
+    mongo_connection = pymongo.MongoClient("mongodb://"+"127.0.0.1"+":"+"27017", maxPoolSize=None)
+    global collection 
+    collection = mongo_connection["AUTSOFT"]["Z3"]
     return
 
 def parse():
@@ -158,9 +184,9 @@ def parse():
     parser = SmtLibParser()
     #data is of the form [formula, sat/unsat]
     
-    path = "semantic-fusion-seeds-master/"
+    path = "semantic-fusion-seeds-master/semantic-fusion-seeds-master/"
 
-    logics = ["QF_LIA"]#,"LIA","QF_LRA","LRA","QF_NRA","NRA"]
+    logics = ["QF_LIA","LIA","QF_LRA","LRA","QF_NRA","NRA"]
 
     for logic in logics:
         path_to_logic = path + logic + "/"
@@ -186,32 +212,38 @@ def parse():
     return data
 def main():
     
-    data = parse()
+    try:
+        data = parse()
     
-    if sys.platform.startswith("linux"):
-        multiprocessing.set_start_method("fork", force=True)
-        
-    print("Running analysis of SMT Solver for Z3 and CVC4")
-    print("Initializing workers...")
-    execution_times=[]
-    analyze_block(data[0])
-    with multiprocessing.Pool(processes=CPUs, initializer=init_process, initargs=()) as pool:
-        start_total = time.time()
-        
-        for execution_time in (pbar:=tqdm.tqdm(pool.map(analyze_block, data, ),desc="Formulas", total= len(data),bar_format="{l_bar}{bar} [ time left: {remaining}, time spent: {elapsed}]")):
-                execution_times.append(execution_time)
-                pbar.set_description(f'Nr Analyzed: {len(execution_times)}; Current Time: {datetime.now()}')
-                pbar.update()
-        end_total = time.time()
-        
-        
-        print("Total execution time: ")
-        print()
-        if execution_times:
-            print("Max execution time: ")
-            print("Mean execution time: ")
-            print("Median execution time")
-            print("Min execution time: ")
+        if sys.platform.startswith("linux"):
+            multiprocessing.set_start_method("fork", force=True)
+            
+        print("Running analysis of SMT Solver for Z3 and CVC4")
+        print("Initializing workers...")
+        result_data=[]
+        #test = analyze_block(data[0])
+        with multiprocessing.Pool(processes=CPUs, initializer=init_process, initargs=("t")) as pool:
+            start_total = time.time()
+            
+            for result in (pbar:=tqdm.tqdm(pool.map(analyze_block, data, ),desc="Formulas", total= len(data),bar_format="{l_bar}{bar} [ time left: {remaining}, time spent: {elapsed}]")):
+                    result_data.append(result)
+                    pbar.set_description(f'Nr Analyzed: {len(result_data)}; Current Time: {datetime.now()}')
+                    pbar.update()
+            end_total = time.time()
+            
+            
+            print("Total execution time: ")
+            print()
+            if result_data:
+                print("Max execution time: ")
+                print("Mean execution time: ")
+                print("Median execution time")
+                print("Min execution time: ")
+    except KeyboardInterrupt as e:
+        print("KEYBOARDINTERRUPT")
+    finally:
+        with open("results.txt","w") as f:
+            f.write(json.dumps(result_data))
 
 if __name__ == "__main__":
     main()
