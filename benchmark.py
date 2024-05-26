@@ -13,7 +13,7 @@ from pysmt.shortcuts import *
 from equiv_walker import RandomEquivDagWalker
 from pysmt.exceptions import SolverReturnedUnknownResultError, NoLogicAvailableError
 import tqdm
-import datetime
+from datetime import datetime
 
 from prop_walker import RandomWeakenerDagWalker
 from strengthener_walker import RandomStrengthenerDagWalker
@@ -119,6 +119,12 @@ def formula_to_smtlib_string(formula):
 
 def analyze_block(formula):
     
+    form = formula[0]
+    
+    status = mongo_connection["AUTSOFT"]["Z3"].find_one({"formula":formula_to_smtlib_string(form)})
+    
+    if status:
+       return 1 
     
     prop_walker = RandomWeakenerDagWalker(env=None,invalidate_memoization=True)
     symbol_walker = SymbolDagWalker(env=None,invalidate_memoization=True)
@@ -128,12 +134,23 @@ def analyze_block(formula):
     dataZ3 = []
     dataCVC4 = []
     
-    form = formula[0]
+    
     form = equiv_walker.walk(form)
     start = time.time()
     try:
         symbols = symbol_walker.get_symbols(form)
         solver_name="z3"
+        
+        start = time.time()
+        try:
+            ret = is_sat(form,solver_name=solver_name)
+        except SolverReturnedUnknownResultError as e:
+            end = time.time()
+            ret = "unkown"
+        end = time.time()
+        
+        dataZ3.append([formula_to_smtlib_string(form),-1,ret,"initial",formula[2],solver_name,end - start])
+        
         dataZ3.append( [*[iterate_equivalence(form,equiv_walker,symbols,formula[2],solver_name)],formula[1]])
         dataZ3.append( [*[iterate_strength_weaken(form,strength_walker,prop_walker,symbols,formula[2],solver_name)],formula[1]])
         dataZ3.append( [*[iterate_strength_weaken_equiv(form,strength_walker,prop_walker,equiv_walker, symbols,formula[2],solver_name)],formula[1]])
@@ -160,16 +177,6 @@ def analyze_block(formula):
         print(e)
         return 0
     
-        # except Exception as e:
-        #     print(colors.FAIL+str(traceback.format_exc())+colors.END)
-        #     print(colors.FAIL+"Error: "+str(e)+" @ block number: "+str(block_number)+colors.END)
-        #     end = time.time()
-        #     return end - start
-
-     
-
-    end = time.time()
-    return end - start
 
 def init_process(t):
     global mongo_connection
@@ -225,7 +232,7 @@ def main():
         with multiprocessing.Pool(processes=CPUs, initializer=init_process, initargs=("t")) as pool:
             start_total = time.time()
             
-            for result in (pbar:=tqdm.tqdm(pool.map(analyze_block, data, ),desc="Formulas", total= len(data),bar_format="{l_bar}{bar} [ time left: {remaining}, time spent: {elapsed}]")):
+            for result in (pbar:=tqdm.tqdm(pool.imap_unordered(analyze_block, data, ),desc="Formulas", total= len(data),bar_format="{l_bar}{bar} [ time left: {remaining}, time spent: {elapsed}]")):
                     result_data.append(result)
                     pbar.set_description(f'Nr Analyzed: {len(result_data)}; Current Time: {datetime.now()}')
                     pbar.update()
